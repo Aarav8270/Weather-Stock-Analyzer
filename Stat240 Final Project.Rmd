@@ -1,0 +1,340 @@
+---
+title: "Does NYC Weather have an Impact on the Nasdaq Stock Index?"
+author: "Anuvrat Arya, Remi Cooper, and Aarav Gupta "
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+output: 
+  html_document:
+        toc: true
+        toc_float: true
+        number_sections: true
+        theme: united
+        highlight: tango
+        code_folding: show
+        fig_caption: true
+        keep_md: false
+        df_print: paged
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+library(tidyverse)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(scales)
+library(zoo)
+```
+
+## Introduction
+
+>The stock market is highly volatile; stocks can rise and lower due to numerous factors like market cycles, elections, interest rates, company performance and natural disasters. But could something as simple as a rainy day on Wall Street affect the stock market? In this project, we aim to answer the question: how does precipitation in New York City affect the opening and closing prices of Nasdaq? We are interested in this topic because our group is specifically interested in the weather/environment as well as economics, leading us to question if weather differences can change the actions of buyers and sellers. This data analysis will cover daily precipitation levels in New York City from 2014-2022 and compare them with daily differences in the opening and closing prices of Nasdaq. We do not predict a statistically significant relationship between these two variables because while rainy weather may affect our moods, we surmise that it will not affect selling and buying behavior.  
+
+## Background
+
+>Our datasets are: 
+Nasdaq data - The NASDAQ historical stock data shows daily trading information for stocks. It includes the day’s date, opening and closing prices and the highest and lowest prices during the day. It also includes the volumes of the shares traded. 
+New York City Weather data – This dataset provides a detailed record of NYC's weather from 2014 to 2024. It provides data like the precipitation (in inches), snowfall, snow depth, minimum temperature, and maximum temperature. We will be utilizing the precipitation data for this project. A potential shortcoming of this dataset is that the records only go back 10 years, so we have a relatively short time period to analyze.  
+Data sources:  
+“CSV Historical Data.” Nasdaq, www.nasdaq.com/market-activity/stocks/csv/historical. Accessed 17 Apr. 2024. 
+“Historical Weather API.” Open Metro, 2024, https://open-meteo.com/en/docs/historical-weather-api#hourly=&daily=precipitation_sum&timezone=America%2FNew_York. Accessed 17 Apr. 2024 
+️Our question is: does the weather in New York City affect the opening and closing prices of Nasdaq? The datasets that we have chosen are the historical data of Nasdaq which has the opening and closing prices and the New York City weather data which tell us about different precipitation levels in New York City according to date. We will use both the datasets to figure out if precipitation in New York City affects the opening and closing prices of Nasdaq.	 
+Some unusual factors that may affect the interpretation of our results are the occurrence of public holidays or days when the stock market was closed. These will be the only unusual factors that must be kept in mind when creating the analysis. With the rest of this report, we plan to find a relation between the weather in New York City and the opening and closing prices of the Nasdaq and figure out if the weather affects the prices or not. 
+In this report, we intend to use scatter plots to depict daily precipitation levels from 2014-2024 versus daily Nasdaq opening and closing prices, and another scatter plot with absolute differentials. We will also create histogram graphs with a monthly time scale instead of daily to show longer term trends. We will include logarithmic scales and regression lines in our graphs to gain a deeper understanding of the data. Creating these graphs will lead us to the conclusion of whether precipitation affects opening and closing prices of Nasdaq.  
+
+## Scatter Plot for Precipitation vs Nasdaq Index Colored by Loss and Gain
+
+```{r echo=FALSE}
+nasdaq_data <- read_csv("../data/nasdaq.csv")
+nyc_weather_data <- read_csv("../data/nyc_weather.csv")
+
+
+# Convert the Date columns to Date format
+nasdaq_data$Date <- mdy(nasdaq_data$Date)
+nyc_weather_data$time <- ymd(nyc_weather_data$time)
+
+# Join the datasets on the date
+data_joined <- inner_join(nasdaq_data, nyc_weather_data, by=c("Date" = "time"))
+
+# Calculate the gain or loss
+data_joined <- data_joined %>%
+  mutate(
+    Open = as.numeric(gsub("\\$", "", Open)),
+    `Close/Last` = as.numeric(gsub("\\$", "", `Close/Last`)),
+    Gain_Loss = if_else(`Close/Last` - Open < 0, "Loss", "Gain")
+  )
+
+# Plotting
+ggplot(data_joined, aes(x = Date, y = prcp, color = Gain_Loss)) +
+  geom_point(alpha = 0.5) + 
+  scale_color_manual(values = c("Loss" = "red", "Gain" = "green")) +
+  labs(title = "NYC Precipitation vs NASDAQ Gain/Loss by Date",
+       x = "Date",
+       y = "Precipitation (mm)",
+       color = "NASDAQ Outcome") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for better readability
+
+```
+
+>This plot offers a visual exploration of the relationship between daily precipitation levels in New York City and NASDAQ stock performance, differentiated by days of financial gain and loss. Utilizing datasets that integrate weather data with NASDAQ indices, this analysis converts dates into a uniform format and merges the information based on date alignment. The financial outcome of each trading day is determined by comparing the opening and closing prices of NASDAQ stocks; a decrease in value is depicted as a "Loss" (red dots), while an increase is shown as a "Gain" (green dots). The plot is constructed with the date on the x-axis and precipitation (in millimeters) on the y-axis, facilitating a direct comparison over time. This visualization is designed to investigate potential patterns or correlations, such as whether higher precipitation is associated with financial losses. Enhanced readability is achieved through rotated x-axis labels and a minimalist theme, ensuring clarity in the presentation of complex data.
+
+## Monthly Cumulative Precipitation and Price Change Histogram Chart
+
+```{r echo=FALSE}
+nasdaq_data <- read_csv("../data/nasdaq.csv")
+nyc_weather_data <- read_csv("../data/nyc_weather.csv")
+# Ensure the Date columns are in the correct format
+nasdaq_data$Date <- mdy(nasdaq_data$Date)
+nyc_weather_data$time <- ymd(nyc_weather_data$time)
+
+# Clean and convert financial data to numeric, if not already done
+nasdaq_data$Open <- as.numeric(gsub("[^0-9.]", "", nasdaq_data$Open))
+nasdaq_data$`Close/Last` <- as.numeric(gsub("[^0-9.]", "", nasdaq_data$`Close/Last`))
+
+# Join the datasets on the date
+data_joined <- inner_join(nasdaq_data, nyc_weather_data, by = c("Date" = "time"))
+
+# Calculate cumulative values and organize data
+data_monthly <- data_joined %>%
+  mutate(
+    Month = format(Date, "%m"),
+    Year = format(Date, "%Y"),
+    Price_Diff = `Close/Last` - Open
+  ) %>%
+  group_by(Year, Month) %>%
+  summarise(
+    Cumulative_Prcp = sum(prcp, na.rm = TRUE),
+    Cumulative_Price_Change = sum(Price_Diff, na.rm = TRUE),
+    .groups = 'drop'
+  )
+
+# Pivot data for plotting
+data_monthly_long <- data_monthly %>%
+  pivot_longer(cols = c(Cumulative_Prcp, Cumulative_Price_Change),
+               names_to = "Variable", values_to = "Value")
+
+# Create the plot
+ggplot(data_monthly_long, aes(x = Month, y = Value, fill = Variable)) +
+  geom_col(position = position_dodge()) +
+  labs(title = "Monthly Cumulative Precipitation and Price Change",
+       x = "Month",
+       y = "Cumulative Value",
+       fill = "Metric") +
+  theme_minimal()
+```
+
+>This analytical visualization aims to reveal potential correlations between monthly cumulative precipitation in New York City and cumulative variations in NASDAQ prices. The analysis begins by importing and synchronizing datasets containing NASDAQ stock performance and NYC weather data, with date conversions ensuring alignment.The datasets are merged on matching dates, allowing for a comprehensive month-by-month comparison. Financial outcomes (gain or loss) for NASDAQ are determined by the day's opening and closing stock prices, providing insights into market dynamics.The histograms are generated to plot cumulative values: one representing the total monthly precipitation (in millimeters) and the other depicting the cumulative price movement within the NASDAQ index. This dual-histogram setup is designed to explore whether there is a direct proportional relationship between increased precipitation and NASDAQ price fluctuations, suggesting that environmental factors might influence market performance.
+
+
+## Scatter Plot of Precipitation and Price Difference from Open to Low
+
+```{r echo=FALSE}
+nasdaq_data <- read_csv("../data/nasdaq.csv")
+nyc_weather_data <- read_csv("../data/nyc_weather.csv")
+# Assuming nasdaq_data and nyc_weather_data are already loaded
+# Convert date formats
+nasdaq_data$Date <- mdy(nasdaq_data$Date)
+nyc_weather_data$time <- ymd(nyc_weather_data$time)
+
+# Clean and convert financial data to numeric
+nasdaq_data$Open <- as.numeric(gsub("[^0-9\\.]", "", nasdaq_data$Open))
+nasdaq_data$Low <- as.numeric(gsub("[^0-9\\.]", "", nasdaq_data$Low))
+
+# Join the datasets on the date
+data_joined <- inner_join(nasdaq_data, nyc_weather_data, by = c("Date" = "time"))
+
+# Calculate the absolute price difference between Open and Low prices
+data_joined <- mutate(data_joined,
+                      Open_Low_Diff = abs(Open - Low))
+
+# Create the scatter plot
+ggplot(data_joined, aes(x = Open_Low_Diff, y = prcp)) +
+  geom_point(alpha = 0.6) +
+  scale_x_log10() +
+  scale_y_log10()+
+  labs(title = "Scatter Plot of Precipitation vs. Absolute Open-Low Price Differential",
+       x = "Absolute Open-Low Price Differential",
+       y = "Precipitation (mm)") +
+  theme_minimal()
+```
+
+> This scatter plot illustrates the relationship between daily precipitation and the absolute price difference from the day's opening to the lowest value of Nasdaq stocks. We implemented a logarithmic scale to better visualize this data. Each data point represents a day, plotted with precipitation on the x-axis and the absolute difference in stock price on the y-axis. The plot might be used to determine if greater precipitation correlates with more significant drops in stock prices from the opening bell. 
+
+## Scatter Plot of Precipitation and Price Difference from Open to Close
+
+```{r echo=FALSE}
+nasdaq_data <- read_csv("../data/nasdaq.csv")
+nyc_weather_data <- read_csv("../data/nyc_weather.csv")
+# Assuming nasdaq_data and nyc_weather_data are loaded
+# Format the Date columns correctly
+nasdaq_data$Date <- mdy(nasdaq_data$Date)
+nyc_weather_data$time <- ymd(nyc_weather_data$time)
+
+# Clean and convert financial data to numeric
+nasdaq_data$Open <- as.numeric(gsub("[^0-9.]", "", nasdaq_data$Open))
+nasdaq_data$`Close/Last` <- as.numeric(gsub("[^0-9.]", "", nasdaq_data$`Close/Last`))
+
+# Join the datasets on the date
+data_joined <- inner_join(nasdaq_data, nyc_weather_data, by=c("Date" = "time"))
+
+# Calculate the absolute price differential and identify gain or loss
+data_joined <- data_joined %>%
+  mutate(
+    Price_Diff = abs(`Close/Last` - Open),
+    Gain_Loss = if_else(`Close/Last` - Open >= 0, "Gain", "Loss")
+  )
+
+# Create the scatter plot
+ggplot(data_joined, aes(x = Price_Diff, y = prcp, color = Gain_Loss)) +
+  geom_point(alpha = 0.6) +
+  scale_x_log10() +
+  scale_y_log10()+
+  scale_color_manual(values = c("Gain" = "green", "Loss" = "red")) +
+  labs(title = "Scatter Plot of Precipitation vs. Absolute Price Differential",
+       x = "Absolute Price Differential (Close - Open)",
+       y = "Precipitation (mm)",
+       color = "Market Outcome") +
+  theme_minimal()
+```
+
+>This scatter plot shows the relationship between daily precipitation and the absolute price difference from the opening to the closing of Nasdaq stocks. We implemented a logarithmic scale to better visualize this data. Each point represents a trading day, with precipitation on the x-axis and the absolute price difference on the y-axis, color-coded to indicate days of market gains and losses. These visual aims to assess whether the weather has any noticeable impact on the day's overall market movement.
+
+## Separate Scatter Plots of Precipitation and Price Difference based on Gain/Loss with Regression Line 
+
+```{r echo=FALSE}
+# Load and clean the data
+nasdaq_data <- read_csv("../data/nasdaq.csv")
+nyc_weather_data <- read_csv("../data/nyc_weather.csv")
+nasdaq_data$Date <- mdy(nasdaq_data$Date)
+nyc_weather_data$time <- ymd(nyc_weather_data$time)
+nasdaq_data$Open <- as.numeric(gsub("[^0-9.]", "", nasdaq_data$Open))
+nasdaq_data$`Close/Last` <- as.numeric(gsub("[^0-9.]", "", nasdaq_data$`Close/Last`))
+
+# Join the datasets on the date
+data_joined <- inner_join(nasdaq_data, nyc_weather_data, by=c("Date" = "time"))
+
+# Calculate the absolute price differential and identify gain or loss
+data_joined <- mutate(data_joined,
+                      Price_Diff = abs(`Close/Last` - Open),
+                      Gain_Loss = if_else(`Close/Last` - Open >= 0, "Gain", "Loss"))
+
+# Create the scatter plot with facets and add regression lines with blue color
+plot <- ggplot(data_joined, aes(x = Price_Diff, y = prcp, color = Gain_Loss)) +
+  geom_point(alpha = 0.6) +  # Plot points
+  scale_x_log10() +
+  scale_y_log10()+
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +  # Add linear regression lines in blue
+  scale_color_manual(values = c("Gain" = "green", "Loss" = "red")) +  # Color mapping for points
+  labs(title = "Scatter Plot of Precipitation vs. Absolute Price Differential",
+       x = "Absolute Price Differential (Close - Open)",
+       y = "Precipitation (mm)",
+       color = "Market Outcome") +
+  theme_minimal() +
+  facet_wrap(~ Gain_Loss)  # Facet by Gain or Loss
+
+# Print the plot
+print(plot)
+```
+
+>This graph separates the data into two scatter plots—one for market gain days and one for loss days—each against the backdrop of precipitation levels, with logarithmic scales applied. The inclusion of regression lines attempts to quantify any potential relationship. While the power law model could potentially describe broader trends in this complex system, the regression lines indicate minimal influence of rainfall on market direction. 
+
+## 95% Confidence Interval Analysis and Interpretation
+
+>Null Hypothesis (H0): The effect of precipitation on the NASDAQ price differential is 0.5. This means that for every unit increase in precipitation, the price differential increases by 0.5. We chose 0.5 previous studies have used this benchmark to determine statistical significance and we thought this would be a good measure. 
+>Alternative Hypothesis (HA): The effect of precipitation on the NASDAQ price differential is not equal to 0.5. This can be a two-sided test.
+Statistical
+Model: Linear regression where price differential depends on precipitation.
+Price Differential= Beta0 + Beta1 * Prcp+ Price Differential
+Here, Beta1is the coefficient we are testing, with the null hypothesis Beta1 = 0.5
+
+```{r echo=FALSE}
+library(knitr)
+library(kableExtra)
+nasdaq_data <- read_csv("../data/nasdaq.csv")
+nyc_weather_data <- read_csv("../data/nyc_weather.csv")
+
+# Format and clean the data
+nasdaq_data$Date <- mdy(nasdaq_data$Date)
+nyc_weather_data$time <- ymd(nyc_weather_data$time)
+nasdaq_data$Open <- as.numeric(gsub("[^0-9.]", "", nasdaq_data$Open))
+nasdaq_data$`Close/Last` <- as.numeric(gsub("[^0-9.]", "", nasdaq_data$`Close/Last`))
+
+# Join the datasets
+data_joined <- inner_join(nasdaq_data, nyc_weather_data, by = c("Date" = "time"))
+
+# Calculate the price differential
+data_joined <- mutate(data_joined, Price_Diff = `Close/Last` - Open)
+
+# Fit a linear regression model
+model <- lm(Price_Diff ~ prcp, data = data_joined)
+
+# Summary of the model to see coefficients
+model_summary <- summary(model)
+
+# Calculate 95% Confidence Interval for the slope (precipitation coefficient)
+ci <- confint(model, "prcp", level = 0.95)
+
+# Output the confidence interval
+cat(sprintf("The 95%% Confidence Interval for the effect of Precipitation on Price Differential is: [%.4f, %.4f]\n", ci[1], ci[2]))
+
+# Extracting coefficient estimate and its standard error
+beta_hat <- coef(model)["prcp"]
+se_beta_hat <- model_summary$coefficients["prcp", "Std. Error"]
+
+# Calculate the t-statistic for H0: beta = 0.5
+t_stat <- (beta_hat - 0.5) / se_beta_hat
+
+# Calculate the degrees of freedom
+df <- nrow(data_joined) - 2
+
+# Calculate the p-value (two-sided test)
+p_value <- 2 * pt(-abs(t_stat), df)
+# Create a dataframe for results to be displayed
+results <- data.frame(
+  Term = c("Coefficient Estimate", "Standard Error", "t-statistic", "Degrees of Freedom", "p-value"),
+  Value = c(
+    formatC(beta_hat, format = "f", digits = 4),
+    formatC(se_beta_hat, format = "f", digits = 4),
+    formatC(t_stat, format = "f", digits = 4),
+    df,
+    formatC(p_value, format = "e", digits = 4)
+  )
+)
+
+# Using kable() to create a table
+results_table <- kable(results, col.names = c("Statistic", "Value"), format = "html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+
+# Print the table
+results_table
+
+# Additionally, print the confidence interval in a similar formatted table
+ci_data <- data.frame(
+  Term = c("Lower Bound", "Upper Bound"),
+  Value = c(formatC(ci[1], format = "f", digits = 4), formatC(ci[2], format = "f", digits = 4))
+)
+ci_table <- kable(ci_data, col.names = c("CI Component", "Value"), format = "html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+
+# Print the confidence interval table
+ci_table
+```
+
+## Analysis
+
+>The data does not support the hypothesis that each unit of increase in precipitation increases the NASDAQ price differential by 0.5. In fact, the effect of precipitation appears to be negligible. This analysis confirms that there's little to no statistically significant relationship between precipitation and the NASDAQ's day-to-day price movements based on the data and models used.
+>The confidence interval ranges from −0.0008 to 0.0040. This suggests that the true effect of a one-unit increase in precipitation (presumably measured in some consistent unit like millimeters or inches) on the NASDAQ price differential could decrease it by as much as 0.0008 units or increase it by up to 0.0040 units.The interval includes 0, which implies that the effect of precipitation on the price differential is not statistically significant at the 95% confidence level. In statistical terms, this means we do not have sufficient evidence to conclude that precipitation has a meaningful impact on the NASDAQ's price differential, as zero effect falls within the plausible range of effects.
+>In analyzing the relationship between NYC precipitation and daily Nasdaq stock price movements, we used data showing that the average closing price of Nasdaq stocks is about $26.87, with prices varying moderately (standard deviation of $8.74). The scatter plot comparing daily precipitation to the Nasdaq's price difference between closing and opening prices shows no obvious link. Most price differences cluster around zero, regardless of rain levels. This supports the main idea that rain does not really affect day-to-day stock prices. Simple regression analysis confirms this, suggesting that rain explains little about price changes. Tests show that the impact of rain on prices is not statistically significant. The numbers and the plot together make a convincing case that Nasdaq stock prices do not move much in response to changes in NYC weather. This forms a solid base for further discussion about what these findings mean. 
+
+## Discussion
+
+>Our question of interest, if rain in New York City affects the opening and closing prices of NASDAQ stocks, can be answered by looking at our graphical results. As discussed in the analysis, our graphs show no significant difference between instances of market gain or loss related to levels of precipitation. The broader interpretation of these results includes how weather affects our productivity and mood, and how weather events contribute to decision making. As we can see from the results, there is little to no effect on buying and selling decisions based on rainy weather, implying that humans do not let weather change their financial decisions, at least in the context of the stock market. 
+As with all research, our analysis has some potential shortcomings. One of these is the concept of “causation versus correlation,” meaning that even if there were correlation between rain and the fluctuation of stock prices, it would not necessarily mean that the rain causes these fluctuations. Other factors like geopolitical events, market sentiment and economic indicators influence stock prices independently of weather events. Another potential shortcoming is confounding variables like seasonal trends, market volatility and macroeconomic factors, which could affect the stock market. Since we did not account for such factors, our analysis may not include every aspect necessary to draw a correlation between the two variables. 
+There are many potential future directions for additional work in addressing our question of interest. If we were to do extended research on this project, we could ask the question, “How does precipitation in New York City affect the opening and closing prices of the New York Stock Exchange?” We could also extend this question to similar indexes like Dow Jones, Cboe Global Markets, or Intercontinental Exchange. These indexes' opening and closing prices can be analyzed independently of each other, or the averages can be combined to get a deeper understanding of the stock market. Another potential question could be, “How does the UV Index in New York City affect the opening and closing prices of NASDAQ?” Changing the independent variable of our question can broaden the understanding of what weather conditions affect the stock market.  
+	There are multiple methods of data analysis to answer our original question of interest that could be employed in future research. One technique is machine learning algorithms, which could analyze vast amounts of data from various sources like social media, newspapers and financial reports to interpret relationships between investor sentiment, rain and stock prices. Another tool to be used are natural language processing techniques, which would analyze textual data to find sentimental indicators of investors and assess how these sentiment changes in response to rain events.  
+New data could be collected and analyzed to broaden our question's scope, for instance, we could include multiple types of weather data such as UV index or drought, severe storms, and heatwaves. Analyzing this type of data would allow us to draw more conclusions about what types of weather events affect the stock market. Additionally, data on investor sentiment from financial news outlets or investor surveys could enhance our understanding of what other factors may influence the opening and closing prices of NASDAQ. 
+  Overall, our analysis reveals no significant correlation between precipitation levels in New York City and the opening and closing prices of NASDAQ stocks. This can be seen through our graphical results which show no discernable difference in market performance based on varying levels of precipitation. The primary evidence is the statistics discovered through analysis in R, including the 95% confidence interval and the p-value. The 95% confidence interval of precipitation on price differential is [-0.0008, 0.0040]. This range includes the number zero, implying no statistically significant relationship. The p-value is 0.0000, which proves that the null hypothesis is false, our null hypothesis being that for every unit of increase in precipitation, the price differential would increase by 0.5.  
+
+^[https://open-meteo.com/en/docs/historical-weather-api#start_date=2014-04-10&end_date=2024-04-09&hourly=&daily=precipitation_sum&timezone=America%2FNew_York]
+^[https://www.nasdaq.com/market-activity/stocks/csv/historical]
